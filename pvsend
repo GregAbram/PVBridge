@@ -1,0 +1,115 @@
+#!/usr/bin/env python3
+"""pvsend -- send Python code to a ParaView GUI running pvbridge and print the result.
+
+    pvsend 'GetSources()'
+    pvsend < script.py
+    pvsend -t 600 < long_job.py      # wait up to 600 s (default 120)
+    pvsend --url http://host:9020 'GetSources()'     # over the network
+    pvsend --url http://host:9020 --screenshot view.png 'Show()'
+
+Over the network (--url, or PVBRIDGE_URL), the token is PVBRIDGE_TOKEN from
+the environment or ~/.pvbridge/keys.env. Otherwise the file mailbox in
+~/.pvbridge is used (same machine or a shared home directory).
+
+Exit status: 0 ok (a "warn" status prints its warnings and still exits 0),
+1 the command raised, 2 timed out (in the mailbox, the command may still run
+later; its result will land in ~/.pvbridge/out/<id>.txt), 3 network or auth error.
+"""
+import argparse, base64, json, os, sys, time, urllib.error, urllib.request, uuid
+
+ROOT = os.path.expanduser("~/.pvbridge")
+
+
+def read_token():
+    tok = os.environ.get("PVBRIDGE_TOKEN", "").strip()
+    if tok:
+        return tok
+    path = os.path.join(ROOT, "keys.env")
+    try:
+        st = os.stat(path)
+        if st.st_uid != os.getuid() or st.st_mode & 0o077:
+            return None
+        for line in open(path):
+            k, _, v = line.strip().partition("=")
+            if k.strip() == "PVBRIDGE_TOKEN":
+                return v.strip().strip("'\"")
+    except FileNotFoundError:
+        pass
+    return None
+
+
+def send_http(url, src, timeout, screenshot):
+    tok = read_token()
+    if not tok:
+        sys.stderr.write("pvsend: no PVBRIDGE_TOKEN (environment or %s/keys.env)\n" % ROOT)
+        sys.exit(3)
+    body = {"code": src, "timeout": timeout}
+    if screenshot:
+        body["screenshot"] = True
+    req = urllib.request.Request(url.rstrip("/") + "/run", data=json.dumps(body).encode(),
+                                 headers={"Content-Type": "application/json", "Authorization": "Bearer " + tok})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout + 15) as r:
+            res = json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        try:
+            res = json.loads(e.read())
+        except Exception:
+            res = {"status": "error", "output": "HTTP %d" % e.code}
+        if e.code == 504:
+            sys.stdout.write(res.get("output", "") + "\n")
+            sys.exit(2)
+        sys.stderr.write("pvsend: HTTP %d: %s\n" % (e.code, res.get("error") or res.get("output")))
+        sys.exit(3)
+    except (urllib.error.URLError, OSError) as e:
+        sys.stderr.write("pvsend: cannot reach %s: %s\n" % (url, e))
+        sys.exit(3)
+    sys.stdout.write(res.get("output", ""))
+    if screenshot and res.get("png"):
+        with open(screenshot, "wb") as f:
+            f.write(base64.b64decode(res["png"]))
+    if res.get("status") == "error":
+        sys.stderr.write("## error %.2fs\n" % res.get("seconds", 0))
+        sys.exit(1)
+    sys.exit(0)
+
+
+def send_mailbox(src, timeout):
+    for d in ("in", "out"):
+        os.makedirs(os.path.join(ROOT, d), mode=0o700, exist_ok=True)
+    os.chmod(ROOT, 0o700)
+    cid = time.strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:6]
+    tmp = os.path.join(ROOT, "in", cid + ".py.tmp")
+    with open(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as f:
+        f.write(src)
+    os.replace(tmp, os.path.join(ROOT, "in", cid + ".py"))
+    res = os.path.join(ROOT, "out", cid + ".txt")
+    t_end = time.time() + timeout
+    while time.time() < t_end:
+        if os.path.exists(res):
+            text = open(res).read()
+            head, _, body = text.partition("\n")
+            sys.stdout.write(body)
+            if head.startswith("## error"):
+                sys.stderr.write(head + "\n")
+                sys.exit(1)
+            sys.exit(0)
+        time.sleep(0.1)
+    sys.stderr.write("pvsend: no reply after %gs (is pvbridge running?). id %s\n" % (timeout, cid))
+    sys.exit(2)
+
+
+ap = argparse.ArgumentParser()
+ap.add_argument("code", nargs="?")
+ap.add_argument("-t", "--timeout", type=float, default=120)
+ap.add_argument("--url", default=os.environ.get("PVBRIDGE_URL"), help="pvbridge listener, e.g. http://127.0.0.1:9020")
+ap.add_argument("--screenshot", metavar="FILE", help="save a screenshot of the view after the command (network only)")
+a = ap.parse_args()
+src = a.code if a.code is not None else sys.stdin.read()
+if a.url:
+    send_http(a.url, src, a.timeout, a.screenshot)
+else:
+    if a.screenshot:
+        sys.stderr.write("pvsend: --screenshot needs --url\n")
+        sys.exit(3)
+    send_mailbox(src, a.timeout)

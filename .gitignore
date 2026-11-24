@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+# older copies kept by hand before this was a repo
+*.v1
+# saved visualizations and bake logs: user data, not code
+visualizations/
+# model test-set run outputs
+voice/results/
+# never commit keys (they live in ~/.pvbridge/keys.env)
+*.env
