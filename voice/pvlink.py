@@ -28,7 +28,7 @@ _PLUMBING = ("DMLinkSender", "DMLinkDomain")
 _BAD_NAME_CHARS = "/\\:"
 _ID_LIKE = ("id", "ids", "index", "vtkoriginalpointids", "vtkoriginalcellids", "vtkoriginalindices")
 _OP_NAMES = {"Contour": "contour", "Slice": "slice", "Outline": "outline", "OutlineCorners": "corners",
-             "Clip": "clip", "Threshold": "threshold", "Glyph": "glyphs", "StreamTracer": "streamlines",
+             "Clip": "clip", "Threshold": "threshold", "Glyph": "glyphs", "StreamTracer": "streamlines", "StreamTracerWithCustomSource": "streamlines",
              "ExtractSurface": "surface", "Calculator": "calculator", "Tube": "tubes",
              "WarpByScalar": "warp", "WarpByVector": "warp", "Delaunay2D": "mesh", "Decimate": "decimated"}
 
@@ -657,6 +657,73 @@ def pvl_derive(input_name, filter, name=None, replace=True, **props):
         out += "; %s removed from the headset" % sname
     SetActiveSource(f)
     return out + note
+
+_MANY_SEEDS = 20000
+
+
+def pvl_streamlines(field_name, seeds_name, vectors=None, name=None, replace=False, **props):
+    """Streamlines through a vector field, seeded from the points of another object
+    (StreamTracerWithCustomSource). vectors: the vector variable; found by itself when the
+    field has only one. Integrates both ways, up to the field's diagonal, unless props say
+    otherwise (IntegrationDirection, MaximumStreamlineLength, ...). Named "<field> streamlines"
+    unless given. replace=False keeps the field in the headset; the seed object is left as is."""
+    import paraview.simple as _simple
+    field = _obj(field_name)
+    seeds = _obj(seeds_name)
+    fname, sname = _name_of(field), _name_of(seeds)
+    if field is seeds:
+        raise PVLError("the seeds have to come from a different object than the field %s "
+                       "(a slice, a line, a point cloud, ...)" % fname)
+    vecs = [("POINTS", k) for k in field.PointData.keys() if field.PointData[k].GetNumberOfComponents() == 3]
+    vecs += [("CELLS", k) for k in field.CellData.keys() if field.CellData[k].GetNumberOfComponents() == 3]
+    vecs = [v for v in vecs if v[1].lower() not in ("normals", "texturecoordinates")]
+    if vectors is None:
+        if not vecs:
+            raise PVLError("%s has no vector variables to trace; make one first (e.g. a gradient, "
+                           "or a Calculator combining three components)" % fname)
+        if len(vecs) > 1:
+            raise PVLError("%s has several vector variables: %s; say which one to trace" % (
+                fname, ", ".join(v[1] for v in vecs)))
+        assoc, vectors = vecs[0]
+    else:
+        match = [v for v in vecs if v[1] == vectors] or [v for v in vecs if v[1].lower() == vectors.lower()]
+        if not match:
+            raise PVLError("%s has no vector variable %r; its vectors: %s" % (
+                fname, vectors, ", ".join(v[1] for v in vecs) or "none"))
+        assoc, vectors = match[0]
+    n_seeds = seeds.GetDataInformation().GetNumberOfPoints()
+    if n_seeds == 0:
+        raise PVLError("%s has no points to seed from" % sname)
+    if n_seeds > _MANY_SEEDS:
+        raise PVLError("%s has %d points; that many streamlines would take very long. Seed from "
+                       "something smaller (a coarser slice, a line, or a sample of points)" % (sname, n_seeds))
+    name = _check_name(name) if name else _unique("%s streamlines" % fname)
+    f = _simple.StreamTracerWithCustomSource(registrationName=name, Input=field, SeedSource=seeds)
+    _tag(f)
+    f.Vectors = [assoc, vectors]
+    f.IntegrationDirection = "BOTH"
+    b = field.GetDataInformation().GetBounds()
+    diag = ((b[1] - b[0]) ** 2 + (b[3] - b[2]) ** 2 + (b[5] - b[4]) ** 2) ** 0.5
+    if diag > 0:
+        f.MaximumStreamlineLength = diag
+    for k, v in props.items():
+        try:
+            setattr(f, k, v)
+        except AttributeError:
+            Delete(f)
+            raise PVLError("StreamTracerWithCustomSource has no property %r; it has: %s" % (k, ", ".join(f.ListProperties())))
+    f.UpdatePipeline()
+    n_pts = f.GetDataInformation().GetNumberOfPoints()
+    out = pvl_show(name, colour_by=vectors if (vectors in f.PointData.keys()) else None)
+    out += " (traced along %s from %d seed points of %s)" % (vectors, n_seeds, sname)
+    if n_pts == 0:
+        out += "; they are empty: the seeds may lie outside the field, or the flow is zero there"
+    ssrc = _sender_of(field)
+    if replace and ssrc is not None:
+        pvl_remove(fname)
+        out += "; %s removed from the headset" % fname
+    SetActiveSource(f)
+    return out
 
 
 def pvl_set(name, **props):
