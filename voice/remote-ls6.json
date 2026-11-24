@@ -1,14 +1,20 @@
 {
   "dmlink_plugin": "/work/01249/gda/ls6/DataManager/paraview/DMLink.py",
-  "plugins": [],
+  "plugins": [
+    "/work/01249/gda/ls6/ParaViewPlugins/MolarPointSampler.py"
+  ],
   "pvlink": {
     "dm_host": "127.0.0.1",
     "dm_port": 9010,
-    "data_roots": ["/work/01249/gda/ls6"],
+    "data_roots": [
+      "/work/01249/gda/ls6"
+    ],
     "pvbatch": "/opt/apps/intel24/paraview/6.1.1/bin/pvbatch",
     "bake_script": "/work/01249/gda/ls6/pvbridge/voice/bake.py",
     "dm_probe": "/work/01249/gda/ls6/DataManager/build/dm_probe",
     "vis_dir": "/work/01249/gda/ls6/pvbridge/visualizations",
-    "plugins": []
+    "plugins": [
+      "/work/01249/gda/ls6/ParaViewPlugins/MolarPointSampler.py"
+    ]
   }
 }
