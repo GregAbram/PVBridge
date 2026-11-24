@@ -62,6 +62,12 @@ def nli_token():
 class Service:
     def __init__(self, a):
         cfg = {"pvlink": {}}
+        if a.config:
+            # ParaView-side settings for a ParaView on another machine (paths there, plugins, ...).
+            with open(os.path.expanduser(a.config)) as f:
+                cfg = json.load(f)
+            cfg.setdefault("pvlink", {})
+            print("ParaView settings from %s" % a.config, flush=True)
         if a.dm:
             host, _, port = a.dm.partition(":")
             cfg["pvlink"].update(dm_host=host, dm_port=int(port or 9010))
@@ -241,7 +247,10 @@ def make_handler(svc, token):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("-m", "--model", default=os.environ.get("PVVOICE_MODEL", "sn-gptoss120"))
-    ap.add_argument("--dm", help="DataManager host[:port] that DMLink sends to")
+    ap.add_argument("--dm", help="DataManager host[:port] that DMLink sends to, as ParaView's machine sees it")
+    ap.add_argument("--config", help="JSON of ParaView-side settings merged over the defaults "
+                    "(dmlink_plugin, plugins, pvlink: {pvbatch, bake_script, dm_probe, vis_dir, data_roots, ...}); "
+                    "for a ParaView on another machine, e.g. remote-ls6.json")
     ap.add_argument("--listen", default="0.0.0.0:9030", help="address:port to serve on")
     ap.add_argument("--stt", default="local", help='"local" or the /v1 URL of a Whisper server')
     ap.add_argument("--stt-model", default="base.en")
