@@ -238,11 +238,11 @@ Talk to ParaView instead of typing to Claude Code, and compare models (Opus vs a
 - `ssh staff.ls6.tacc.utexas.edu`, then `ssh <DCV node>`. The node changes daily, so ask the user.
 - Modules: `module load intel/24.1 paraview/6.1.1`.
 
-## 9. Where the code lives (2026-11-23, nothing below is pushed)
+## 9. Where the code lives (2026-11-23)
 
 - **pvbridge** (`~/pvbridge`): git repo since 2026-11-23, `main`, no remote. visualizations/ and voice/results/ are ignored.
-- **AprilTags** (`~/Unity/AprilTags`): branch `release-0.7.1` (5bcb587) = 0.7.0 + `QuestRoomControls.ForgetLearnedOnX`/`XHint`. `main` still has the user's uncommitted 0.8.0 work. PVAR builds from a copy of 0.7.1 at `C:\Users\gda\AprilTags-voice` (manifest `file:` pin) until it's pushed and pinned by hash.
-- **DataManager** (`~/Documents/GitHub/DataManager`): `cache-removals` (9b3755f) then `pvlink-points` (46e2a71: points without cells, sprites, radius, Z-up). The Windows clone `C:\Users\gda\DataManager` is on the same commit (moved there with a bundle), plus Unity-generated local changes.
-- **PVAR** (Windows): branch `voice` (63d40ac) adds PVARVoice.cs. `Packages/manifest.json` (file: pins for DataManager and AprilTags) is deliberately uncommitted.
-- **ParaViewPlugins**: `main` aadca1d (AdvectionSampler, fire-plume generator, sampler updates).
-- To publish: push AprilTags `release-0.7.1` (tag v0.7.1), DataManager `cache-removals` and `pvlink-points`, then repin PVAR's manifest to git hashes and push PVAR `voice`. Windows can't push over ssh: use the bundle trick (memory: pvar-quest-performance).
+- **AprilTags**: `release-0.7.1` + tag `v0.7.1` (5bcb587) pushed = 0.7.0 + `QuestRoomControls.ForgetLearnedOnX`/`XHint`. Local `main` still has the user's uncommitted 0.8.0 work; merge release-0.7.1 into it when 0.8.0 is committed.
+- **DataManager**: `cache-removals` (9b3755f) and `pvlink-points` (46e2a71: points without cells, sprites, radius, Z-up) pushed. The Windows clone `C:\Users\gda\DataManager` is on pvlink-points.
+- **PVAR**: branch `voice` pushed (PVARVoice.cs; manifest pins DataManager 46e2a71 and AprilTags 5bcb587). Not merged into main/datamanager-client.
+- **ParaViewPlugins**: `main` aadca1d, not pushed.
+- The dm on Windows runs `C:\Users\gda\DataManager\build-win\dm.exe --store C:\Users\gda\dmvoice`: `.states\` holds one JSON per state (Institution-Project), `GDA\<project>\<type>\` holds the items (`KeyData\<name>-<t>.bin` + `.tstep`, Bounds, Colormap, Visibility).
